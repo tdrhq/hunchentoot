@@ -35,10 +35,6 @@
            #:url-encode)
   (:export #:*acceptor*
            #:*catch-errors-p*
-           #+:lispworks
-           #:*cleanup-function*
-           #+:lispworks
-           #:*cleanup-interval*
            #:*content-types-for-url-rewrite*
            #:*default-connection-timeout*
            #:*default-content-type*
@@ -135,7 +131,7 @@
            #:acceptor-request-class
            #:acceptor-requests-in-progress
            #:acceptor-ssl-p
-           #-:hunchentoot-no-ssl #:acceptor-ssl-certificate-file               
+           #-:hunchentoot-no-ssl #:acceptor-ssl-certificate-file
            #-:hunchentoot-no-ssl #:acceptor-ssl-privatekey-file
            #-:hunchentoot-no-ssl #:acceptor-ssl-privatekey-password
            #:acceptor-status-message

@@ -44,7 +44,7 @@ documentation string."
 
   (defvar *http-reason-phrase-map* (make-hash-table)
     "Used to map numerical return codes to reason phrases.")
-  
+
   (defmacro def-http-return-code (name value reason-phrase)
     "Shortcut to define constants for return codes.  NAME is a
 Lisp symbol, VALUE is the numerical value of the return code, and
@@ -284,8 +284,7 @@ from and writing to a socket stream.")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
  (define-symbol-macro *supports-threads-p*
-   #+:lispworks t
-   #-:lispworks bt:*supports-threads-p*))
+     bt:*supports-threads-p*))
 
 (defvar *global-session-db-lock*
   (load-time-value (and *supports-threads-p* (make-lock "global-session-db-lock")))

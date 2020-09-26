@@ -36,8 +36,7 @@ certificate file in PEM format.")
    (ssl-privatekey-file :initarg :ssl-privatekey-file
                         :reader acceptor-ssl-privatekey-file
                         :documentation "A pathname designator for a
-private key file in PEM format, or \(only on LispWorks) NIL if the
-certificate file contains the private key.")
+private key file in PEM format")
    (ssl-privatekey-password :initform nil
                             :initarg :ssl-privatekey-password
                             :reader acceptor-ssl-privatekey-password
@@ -49,10 +48,9 @@ private key file or NIL for no password."))
 \(instead of ACCEPTOR) if you want an https server.  There are two
 required initargs, :SSL-CERTIFICATE-FILE and :SSL-PRIVATEKEY-FILE, for
 pathname designators denoting the certificate file and the key file in
-PEM format.  On LispWorks, you can have both in one file in which case
-the second initarg is optional.  You can also use the
-:SSL-PRIVATEKEY-PASSWORD initarg to provide a password \(as a string)
-for the key file \(or NIL, the default, for no password).
+PEM format.  You can also use the :SSL-PRIVATEKEY-PASSWORD initarg to
+provide a password \(as a string) for the key file \(or NIL, the
+default, for no password).
 
 The default port for SSL-ACCEPTOR instances is 443 instead of 80"))
 
@@ -63,11 +61,6 @@ The default port for SSL-ACCEPTOR instances is 443 instead of 80"))
 
 (defmethod initialize-instance :after ((acceptor ssl-acceptor) &rest initargs)
   (declare (ignore initargs))
-  ;; LispWorks can read both from the same file, so we can default one
-  #+:lispworks
-  (unless (slot-boundp acceptor 'ssl-privatekey-file)
-    (setf (slot-value acceptor 'ssl-privatekey-file)
-          (acceptor-ssl-certificate-file acceptor)))
   ;; OpenSSL doesn't know much about Lisp pathnames...
   (setf (slot-value acceptor 'ssl-privatekey-file)
         (namestring (truename (acceptor-ssl-privatekey-file acceptor)))
@@ -76,7 +69,6 @@ The default port for SSL-ACCEPTOR instances is 443 instead of 80"))
 
 ;; usocket implementation
 
-#-:lispworks
 (defmethod initialize-connection-stream ((acceptor ssl-acceptor) stream)
   ;; attach SSL to the stream if necessary
   (call-next-method acceptor
@@ -85,40 +77,6 @@ The default port for SSL-ACCEPTOR instances is 443 instead of 80"))
                                                    :key (acceptor-ssl-privatekey-file acceptor)
                                                    :password (acceptor-ssl-privatekey-password acceptor))))
 
-;; LispWorks implementation
 
-#+:lispworks
-(defun make-ssl-server-stream (socket-stream &key certificate-file privatekey-file privatekey-password)
-  "Given the acceptor socket stream SOCKET-STREAM attaches SSL to the
-stream using the certificate file CERTIFICATE-FILE and the private key
-file PRIVATEKEY-FILE.  Both of these values must be namestrings
-denoting the location of the files and will be fed directly to
-OpenSSL.  If PRIVATEKEY-PASSWORD is not NIL then it should be the
-password for the private key file \(if necessary).  Returns the
-stream."
-  (flet ((ctx-configure-callback (ctx)
-           (when privatekey-password
-             (comm:set-ssl-ctx-password-callback ctx :password privatekey-password))
-           (comm:ssl-ctx-use-certificate-file ctx
-                                              certificate-file
-                                              comm:ssl_filetype_pem)
-           (comm:ssl-ctx-use-privatekey-file ctx
-                                             privatekey-file
-                                             comm:ssl_filetype_pem)))
-    (comm:attach-ssl socket-stream
-                     :ctx-configure-callback #'ctx-configure-callback)
-    socket-stream))
-
-#+:lispworks
-(defmethod initialize-connection-stream ((acceptor ssl-acceptor) stream)
-  ;; attach SSL to the stream if necessary
-  (call-next-method acceptor
-                    (make-ssl-server-stream stream
-                                            :certificate-file (acceptor-ssl-certificate-file acceptor)
-                                            :privatekey-file (acceptor-ssl-privatekey-file acceptor)
-                                            :privatekey-password (acceptor-ssl-privatekey-password acceptor))))
-
-
-#-:lispworks
 (defun get-peer-ssl-certificate ()
   (cl+ssl:ssl-stream-x509-certificate *hunchentoot-stream*))

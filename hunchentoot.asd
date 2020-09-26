@@ -46,13 +46,13 @@
                :cl-fad
                :cl-ppcre
                :flexi-streams
-               #-(or :lispworks :hunchentoot-no-ssl) :cl+ssl
+               #-:hunchentoot-no-ssl :cl+ssl
                :md5
                :alexandria
                :rfc2388
                :trivial-backtrace
-               #-:lispworks :usocket
-               #-:lispworks :bordeaux-threads)
+               :usocket
+               :bordeaux-threads)
   :components ((:module url-rewrite
                 :serial t
                 :components ((:file "packages")
@@ -61,8 +61,7 @@
                              (:file "util")
                              (:file "url-rewrite")))
                (:file "packages")
-               #+:lispworks (:file "lispworks")
-               #-:lispworks (:file "compat")
+               (:file "compat")
                (:file "specials")
                (:file "conditions")
                (:file "mime-types")

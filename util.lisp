@@ -57,7 +57,7 @@ digits."
 (defun reason-phrase (return-code)
   "Returns a reason phrase for the HTTP return code RETURN-CODE \(which
 should be an integer) or NIL for return codes Hunchentoot doesn't know."
-  (gethash return-code *http-reason-phrase-map* 
+  (gethash return-code *http-reason-phrase-map*
            "No reason phrase known"))
 
 (defgeneric assoc* (thing alist)
@@ -357,9 +357,6 @@ ACCEPTOR-SSL-P."
 (defmacro with-mapped-conditions (() &body body)
   "Run BODY with usocket condition mapping in effect, i.e. platform specific network errors will be
   signalled as usocket conditions.  For Lispworks, no mapping is performed."
-  #+:lispworks
-  `(progn ,@body)
-  #-:lispworks
   `(usocket:with-mapped-conditions ()
     ,@body))
 

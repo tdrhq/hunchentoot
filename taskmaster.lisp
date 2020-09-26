@@ -47,11 +47,10 @@ taskmaster instance the method might be called from a new thread."))
 (defgeneric handle-incoming-connection (taskmaster socket)
   (:documentation "This function is called by the acceptor to start
 processing of requests on a new incoming connection.  SOCKET is the
-usocket instance that represents the new connection \(or a socket
-handle on LispWorks).  The taskmaster starts processing requests on
-the incoming connection by calling the PROCESS-CONNECTION method of
-the acceptor instance.  The SOCKET argument is passed to
-PROCESS-CONNECTION as an argument."))
+usocket instance that represents the new connection.  The taskmaster
+starts processing requests on the incoming connection by calling the
+PROCESS-CONNECTION method of the acceptor instance.  The SOCKET
+argument is passed to PROCESS-CONNECTION as an argument."))
 
 (defgeneric shutdown (taskmaster)
   (:documentation "Shuts down the taskmaster, i.e. frees all resources
@@ -60,12 +59,12 @@ might terminate all threads that are currently associated with it.
 This function is called by the acceptor's STOP method."))
 
 (defgeneric create-request-handler-thread (taskmaster socket)
-  (:documentation 
+  (:documentation
    "Create a new thread in which to process the request.
     This thread will call PROCESS-CONNECTION to process the request."))
 
 (defgeneric too-many-taskmaster-requests (taskmaster socket)
-  (:documentation 
+  (:documentation
    "Signal a \"too many requests\" error, just prior to closing the connection."))
 
 (defgeneric taskmaster-max-thread-count (taskmaster)
@@ -118,17 +117,13 @@ Hunchentoot taskmaster methods will call it with the taskmaster as the context,
 allowing hunchentoot extensions to define specialized methods that may e.g.
 wrap the thunk within a proper set of bindings and condition handlers.")
   (:method ((taskmaster t) thunk &key name)
-    #-lispworks
-    (bt:make-thread thunk :name name)
-    #+lispworks
-    (mp:process-run-function name nil thunk)))
+    (bt:make-thread thunk :name name)))
 
 
 (defclass single-threaded-taskmaster (taskmaster)
   ()
   (:documentation "A taskmaster that runs synchronously in the thread
-where the START function was invoked \(or in the case of LispWorks in
-the thread started by COMM:START-UP-SERVER).  This is the simplest
+where the START function was invoked.  This is the simplest
 possible taskmaster implementation in that its methods do nothing but
 calling their acceptor \"sister\" methods - EXECUTE-ACCEPTOR calls
 ACCEPT-CONNECTIONS, HANDLE-INCOMING-CONNECTION calls
@@ -179,7 +174,7 @@ For a concrete class to instantiate, use one-thread-per-connection-taskmaster.")
     :initarg :max-thread-count
     :initform nil
     :accessor taskmaster-max-thread-count
-    :documentation 
+    :documentation
     "The maximum number of request threads this taskmaster will simultaneously
      run before refusing or queueing new connections requests.  If the value
      is null, then there is no limit.")
@@ -341,21 +336,17 @@ implementations."))
 
 ;;; usocket implementation
 
-#-:lispworks
 (defmethod shutdown ((taskmaster taskmaster))
   taskmaster)
 
-#-:lispworks
 (defmethod shutdown ((taskmaster one-thread-per-connection-taskmaster))
   ;; just wait until the acceptor process has finished, then return
   (bt:join-thread (acceptor-process taskmaster))
   taskmaster)
 
-#-:lispworks
 (defmethod handle-incoming-connection ((taskmaster one-thread-per-connection-taskmaster) socket)
   (create-request-handler-thread taskmaster socket))
 
-#-lispworks
 (defmethod handle-incoming-connection% ((taskmaster one-thread-per-connection-taskmaster) socket)
   ;; Here's the idea, with the stipulations given in ONE-THREAD-PER-CONNECTION-TASKMASTER
   ;;  - If MAX-THREAD-COUNT is null, just start a taskmaster
@@ -416,64 +407,9 @@ is set up via PROCESS-REQUEST."
 (defun client-as-string (socket)
   "A helper function which returns the client's address and port as a
    string and tries to act robustly in the presence of network problems."
-  #-:lispworks
   (let ((address (usocket:get-peer-address socket))
         (port (usocket:get-peer-port socket)))
     (when (and address port)
       (format nil "~A:~A"
               (usocket:vector-quad-to-dotted-quad address)
-              port)))
-  #+:lispworks
-  (multiple-value-bind (address port)
-      (comm:get-socket-peer-address socket)
-    (when (and address port)
-      (format nil "~A:~A"
-              (comm:ip-address-string address)
               port))))
-
-;; LispWorks implementation
-
-#+:lispworks
-(defmethod shutdown ((taskmaster taskmaster))
-  (when-let (process (acceptor-process (taskmaster-acceptor taskmaster)))
-    ;; kill the main acceptor process, see LW documentation for
-    ;; COMM:START-UP-SERVER
-    (mp:process-kill process))
-  taskmaster)
-
-#+:lispworks
-(defmethod handle-incoming-connection ((taskmaster one-thread-per-connection-taskmaster) socket)
-  (incf *worker-counter*)
-  ;; check if we need to perform a global GC
-  (when (and *cleanup-interval*
-             (zerop (mod *worker-counter* *cleanup-interval*)))
-    (when *cleanup-function*
-      (funcall *cleanup-function*)))
-  (create-request-handler-thread taskmaster socket))
-
-#+:lispworks
-(defmethod handle-incoming-connection% ((taskmaster one-thread-per-connection-taskmaster) socket)
-  (increment-taskmaster-accept-count taskmaster)
-  (flet ((process-connection% (acceptor socket)
-           (increment-taskmaster-thread-count taskmaster)
-           (unwind-protect
-                (process-connection acceptor socket)
-             (decrement-taskmaster-thread-count taskmaster))))
-    (cond ((null (taskmaster-max-thread-count taskmaster))
-           ;; No limit on number of requests, just start a taskmaster
-           (process-connection (taskmaster-acceptor taskmaster) socket))
-          ((if (taskmaster-max-accept-count taskmaster)
-               (>= (taskmaster-accept-count taskmaster) (taskmaster-max-accept-count taskmaster))
-               (>= (taskmaster-thread-count taskmaster) (taskmaster-max-thread-count taskmaster)))
-           ;; Send HTTP 503 to indicate that we can't handle the request right now
-           (too-many-taskmaster-requests taskmaster socket)
-           (send-service-unavailable-reply taskmaster socket))
-          ((and (taskmaster-max-accept-count taskmaster)
-                (>= (taskmaster-thread-count taskmaster) (taskmaster-max-thread-count taskmaster)))
-           ;; Lispworks doesn't have condition variables, so punt
-           (too-many-taskmaster-requests taskmaster socket)
-           (send-service-unavailable-reply taskmaster socket))
-          (t
-           ;; We're within both limits, just start a taskmaster
-           (process-connection% (taskmaster-acceptor taskmaster) socket)))))
-

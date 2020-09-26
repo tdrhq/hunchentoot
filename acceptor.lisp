@@ -110,18 +110,10 @@ socket timeouts.  NIL means no timeout.")
 specified in \(fractional) seconds.  The precise semantics of this
 parameter is determined by the underlying Lisp's implementation of
 socket timeouts.  NIL means no timeout.")
-   #+:lispworks
-   (process :accessor acceptor-process
-            :documentation "The Lisp process which accepts incoming
-requests.  This is the process started by COMM:START-UP-SERVER and no
-matter what kind of taskmaster you are using this will always be a new
-process different from the one where START was called.")
-   #-:lispworks
    (listen-socket :initform nil
                   :accessor acceptor-listen-socket
                   :documentation "The socket listening for incoming
 connections.")
-   #-(or :lispworks4 :lispworks5 :lispworks6)
    (listen-backlog :initarg :listen-backlog
                    :reader acceptor-listen-backlog
                    :documentation "Number of pending connections
@@ -177,8 +169,7 @@ acceptor-dispatch-request method handles the request."))
    :name (gensym)
    :request-class 'request
    :reply-class 'reply
-   #-(or :lispworks4 :lispworks5 :lispworks6) :listen-backlog
-   #-(or :lispworks4 :lispworks5 :lispworks6) 50
+   :listen-backlog 50
    :taskmaster (make-instance (cond (*supports-threads-p* 'one-thread-per-connection-taskmaster)
                                     (t 'single-threaded-taskmaster)))
    :output-chunking-p t
@@ -239,8 +230,7 @@ is returned either some thread has called STOP, or some thread's call
 to START hasn't finished or START was never called at all for
 ACCEPTOR.")
   (:method (acceptor)
-    #-lispworks (and (acceptor-listen-socket acceptor) t)
-    #+lispworks (not (acceptor-shutdown-p acceptor))))
+    (and (acceptor-listen-socket acceptor) t)))
 
 (defgeneric start-listening (acceptor)
   (:documentation "Sets up a listen socket for the given ACCEPTOR and
@@ -252,9 +242,8 @@ or similar)."))
 (defgeneric accept-connections (acceptor)
   (:documentation "In a loop, accepts a connection and hands it over
 to the acceptor's taskmaster for processing using
-HANDLE-INCOMING-CONNECTION.  On LispWorks, this function returns
-immediately, on other Lisps it returns only once the acceptor has been
-stopped."))
+HANDLE-INCOMING-CONNECTION.  It returns only once the acceptor has
+been stopped."))
 
 (defgeneric initialize-connection-stream (acceptor stream)
  (:documentation "Can be used to modify the stream which is used to
@@ -273,11 +262,10 @@ stream."))
 (defgeneric process-connection (acceptor socket)
   (:documentation "This function is called by the taskmaster when a
 new client connection has been established.  Its arguments are the
-ACCEPTOR object and a LispWorks socket handle or a usocket socket
-stream object in SOCKET.  It reads the request headers, sets up the
-request and reply objects, and hands over to PROCESS-REQUEST.  This is
-done in a loop until the stream has to be closed or until a connection
-timeout occurs.
+ACCEPTOR object and a usocket socket stream object in SOCKET.  It
+reads the request headers, sets up the request and reply objects, and
+hands over to PROCESS-REQUEST.  This is done in a loop until the
+stream has to be closed or until a connection timeout occurs.
 
 It is probably not a good idea to re-implement this method until you
 really, really know what you're doing."))
@@ -319,7 +307,6 @@ they're using secure connections - see the SSL-ACCEPTOR class."))
 (defmethod stop ((acceptor acceptor) &key soft)
   (with-lock-held ((acceptor-shutdown-lock acceptor))
     (setf (acceptor-shutdown-p acceptor) t))
-  #-lispworks
   (wake-acceptor-for-shutdown acceptor)
   (when soft
     (with-lock-held ((acceptor-shutdown-lock acceptor))
@@ -327,15 +314,10 @@ they're using secure connections - see the SSL-ACCEPTOR class."))
         (condition-variable-wait (acceptor-shutdown-queue acceptor)
                                  (acceptor-shutdown-lock acceptor)))))
   (shutdown (acceptor-taskmaster acceptor))
-  #-lispworks
   (usocket:socket-close (acceptor-listen-socket acceptor))
-  #-lispworks
   (setf (acceptor-listen-socket acceptor) nil)
-  #+lispworks
-  (mp:process-kill (acceptor-process acceptor))
   acceptor)
 
-#-lispworks
 (defun wake-acceptor-for-shutdown (acceptor)
   "Creates a dummy connection to the acceptor, waking ACCEPT-CONNECTIONS while it is waiting.
 This is supposed to force a check of ACCEPTOR-SHUTDOWN-P."
@@ -365,8 +347,7 @@ This is supposed to force a check of ACCEPTOR-SHUTDOWN-P."
   ;; this around method is used for error handling
   ;; note that this method also binds *ACCEPTOR*
   (with-conditions-caught-and-logged ()
-    (with-mapped-conditions ()
-      (call-next-method))))
+    (call-next-method)))
 
 (defun do-with-acceptor-request-count-incremented (*acceptor* function)
   (with-lock-held ((acceptor-shutdown-lock *acceptor*))
@@ -559,7 +540,6 @@ catches during request processing."
 
 ;; usocket implementation
 
-#-:lispworks
 (defmethod start-listening ((acceptor acceptor))
   (when (acceptor-listen-socket acceptor)
     (hunchentoot-error "acceptor ~A is already listening" acceptor))
@@ -572,12 +552,10 @@ catches during request processing."
                                :element-type '(unsigned-byte 8)))
   (values))
 
-#-:lispworks
 (defmethod start-listening :after ((acceptor acceptor))
   (when (zerop (acceptor-port acceptor))
     (setf (slot-value acceptor 'port) (usocket:get-local-port (acceptor-listen-socket acceptor)))))
 
-#-:lispworks
 (defmethod accept-connections ((acceptor acceptor))
   (usocket:with-server-socket (listener (acceptor-listen-socket acceptor))
     (loop
@@ -594,51 +572,6 @@ catches during request processing."
                        (acceptor-write-timeout acceptor))
          (handle-incoming-connection (acceptor-taskmaster acceptor)
                                      client-connection))))))
-
-;; LispWorks implementation
-
-#+:lispworks
-(defmethod start-listening ((acceptor acceptor))
-  (multiple-value-bind (listener-process startup-condition)
-      (comm:start-up-server :service (acceptor-port acceptor)
-                            :address (acceptor-address acceptor)
-                            :process-name (format nil "Hunchentoot listener \(~A:~A)"
-                                                  (or (acceptor-address acceptor) "*")
-                                                  (acceptor-port acceptor))
-                            #-(or :lispworks4 :lispworks5 :lispworks6)
-                            :backlog
-                            #-(or :lispworks4 :lispworks5 :lispworks6)
-                            (acceptor-listen-backlog acceptor)
-                            ;; this function is called once on startup - we
-                            ;; use it to check for errors and random port
-                            :announce (lambda (socket &optional condition)
-                                        (when condition
-                                          (error condition))
-                                        (when (or (null (acceptor-port acceptor))
-                                                  (zerop (acceptor-port acceptor)))
-                                          (multiple-value-bind (address port)
-                                              (comm:get-socket-address socket)
-                                            (declare (ignore address))
-                                            (setf (slot-value acceptor 'port) port))))
-                            ;; this function is called whenever a connection
-                            ;; is made
-                            :function (lambda (handle)
-                                        (unless (acceptor-shutdown-p acceptor)
-                                          (handle-incoming-connection
-                                           (acceptor-taskmaster acceptor) handle)))
-                            ;; wait until the acceptor was successfully started
-                            ;; or an error condition is returned
-                            :wait t)
-    (when startup-condition
-      (error startup-condition))
-    (mp:process-stop listener-process)
-    (setf (acceptor-process acceptor) listener-process)
-    (values)))
-
-#+:lispworks
-(defmethod accept-connections ((acceptor acceptor))
-  (mp:process-unstop (acceptor-process acceptor))
-  nil)
 
 (defmethod acceptor-dispatch-request ((acceptor acceptor) request)
   "Detault implementation of the request dispatch method, generates an
