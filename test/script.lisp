@@ -130,6 +130,24 @@ expecting certain responses."
     (http-assert-header :content-type "image/jpeg")
     (http-assert 'body (complement #'mismatch) (file-contents #P"fz.jpg"))
 
+    (let ((*catch-errors-p* t))
+      (say "Request a page with errors")
+      (http-request "oops.html")
+      (http-assert 'status-code 500)
+
+      ;; Verify server is still running
+      (say "Verifying server is still up after oops.html")
+      (http-request "")
+      (http-assert 'status-code 200)
+
+      (say "Request a page with usocket errors")
+      (http-request "usocket-oops.html")
+      (http-assert 'status-code 500)
+
+      (say "Verifying server is still up after usocket-oops.html")
+      (http-request "")
+      (http-assert 'status-code 200))
+
     (say "Request the Zappa image from RAM")
     (http-request "image-ram.jpg")
     (http-assert-header :content-length (file-length-string #P"fz.jpg"))
@@ -143,6 +161,7 @@ expecting certain responses."
                   :method :post :parameters '(("file1" #P"fz.jpg")))
     (http-request "upload.html")
     (http-assert-body (format nil "fz.jpg.*>~A&nbsp;Bytes" (file-length-string #P"fz.jpg")))
+
 
     (say "Range tests")
     (say " Upload file")
@@ -191,4 +210,3 @@ expecting certain responses."
 
 
     (values)))
-

@@ -597,6 +597,7 @@ handler."
                     ;; if the headers were already sent, the error
                     ;; happened within the body and we have to close
                     ;; the stream
+                    (format t "Got condition ~s" cond)
                     (when *headers-sent*
                       (setq *finish-processing-socket* t))
                     (throw 'handler-done

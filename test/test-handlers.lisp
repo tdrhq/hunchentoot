@@ -141,6 +141,17 @@
     (:html
      (:body "You should never see this sentence..."))))
 
+(define-condition dummy-condition (simple-error) ())
+
+(defun usocket-oops ()
+  (with-html
+    (log-message* :error "Oops \(error log level).")
+    (log-message* :warning "Oops \(warning log level).")
+    (log-message* :info "Oops \(info log level).")
+    (error 'dummy-condition :format-control "ugggh")
+    (:html
+     (:body "You should never see this sentence..."))))
+
 (defun redir ()
   (redirect "/hunchentoot/test/info.html?redirected=1"))
 
@@ -196,7 +207,7 @@ time or try with cookies disabled.")
            (:input :type :text
             :name "new-bar-value"
             :value (or (session-value 'bar) ""))))
-      (info-table (session-cookie-name *acceptor*) 
+      (info-table (session-cookie-name *acceptor*)
                   (cookie-in (session-cookie-name *acceptor*))
                   (mapcar 'car (cookies-in*))
                   (session-value 'foo)
@@ -330,7 +341,7 @@ and see what's happening.")
     (handle-static-file (first file-info) (third file-info))))
 
 (defparameter *headline*
-  (load-time-value              
+  (load-time-value
    (format nil "Hunchentoot test menu (see file <code>~A</code>)"
            (truename (merge-pathnames (make-pathname :type "lisp") *this-file*)))))
 
@@ -345,7 +356,7 @@ and see what's happening.")
         (buffer (make-array 1024 :element-type 'flex:octet)))
     (with-open-file (in *utf-8-file* :element-type 'flex:octet)
       (loop for pos = (read-sequence buffer in)
-            until (zerop pos) 
+            until (zerop pos)
             do (write-sequence buffer stream :end pos)))))
 
 (defun stream-direct-utf-8 ()
@@ -451,7 +462,7 @@ and see what's happening.")
                   (loop :for choice :being :the :hash-keys :of meal :collect choice)
                   (gethash "Yellow snow" meal)
                   team)))))
-                
+
 
 (defun menu ()
   (with-html
@@ -550,6 +561,7 @@ and see what's happening.")
                  ("/hunchentoot/test/upload.html" upload-test)
                  ("/hunchentoot/test/redir.html" redir)
                  ("/hunchentoot/test/oops.html" oops)
+                 ("/hunchentoot/test/usocket-oops.html" usocket-oops)
                  ("/hunchentoot/test/utf8-binary.txt" stream-direct)
                  ("/hunchentoot/test/utf8-character.txt" stream-direct-utf-8)
                  ("/hunchentoot/test/utf8-string.txt" stream-direct-utf-8-string)
